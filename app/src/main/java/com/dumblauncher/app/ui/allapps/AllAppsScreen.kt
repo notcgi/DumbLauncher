@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -62,6 +64,8 @@ fun AllAppsScreen(
     onBack: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     var dismissAccum by remember { mutableFloatStateOf(0f) }
     var menuApp by remember { mutableStateOf<LaunchableApp?>(null) }
@@ -87,23 +91,6 @@ fun AllAppsScreen(
                 return Offset.Zero
             }
 
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                // Unconsumed upward scroll (e.g. at bottom / short list): swipe-up to close.
-                if (available.y < 0f) {
-                    dismissAccum += available.y
-                    if (dismissAccum <= -DismissDragThresholdPx) {
-                        dismissAccum = 0f
-                        onBackUpdated()
-                    }
-                    return Offset(x = 0f, y = available.y)
-                }
-                return Offset.Zero
-            }
-
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                 dismissAccum = 0f
                 return Velocity.Zero
@@ -113,6 +100,13 @@ fun AllAppsScreen(
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        }
     }
 
     LaunchedEffect(state.query, state.apps) {

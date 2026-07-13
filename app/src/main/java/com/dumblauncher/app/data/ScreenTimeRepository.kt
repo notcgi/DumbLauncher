@@ -2,9 +2,12 @@ package com.dumblauncher.app.data
 
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +35,63 @@ class ScreenTimeRepository(private val context: Context) {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
+    }
+
+    fun openScreenTime() {
+        if (!hasUsageAccess()) {
+            openUsageAccessSettings()
+            return
+        }
+        val pm = context.packageManager
+        val wellbeingPackages = listOf(
+            "com.google.android.apps.wellbeing",
+            "com.samsung.android.forest",
+            "com.huawei.wellbeing",
+            "com.coloros.digitalwellbeing",
+        )
+        for (pkg in wellbeingPackages) {
+            val launch = pm.getLaunchIntentForPackage(pkg)
+                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (launch != null && startIfResolvable(launch)) return
+        }
+        val componentIntents = listOf(
+            ComponentName(
+                "com.google.android.apps.wellbeing",
+                "com.google.android.apps.wellbeing.ui.DashboardActivity",
+            ),
+            ComponentName(
+                "com.google.android.apps.wellbeing",
+                "com.google.android.apps.wellbeing.settings.TopLevelSettingsActivity",
+            ),
+        )
+        for (component in componentIntents) {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                this.component = component
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (startIfResolvable(intent)) return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val intent = Intent("android.settings.action.APP_USAGE_SETTINGS").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (startIfResolvable(intent)) return
+        }
+        openUsageAccessSettings()
+    }
+
+    private fun startIfResolvable(intent: Intent): Boolean {
+        val pm = context.packageManager
+        val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.resolveActivity(intent, 0)
+        } ?: return false
+        return runCatching {
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
     }
 
     fun readTodayScreenTimeText(): String? =

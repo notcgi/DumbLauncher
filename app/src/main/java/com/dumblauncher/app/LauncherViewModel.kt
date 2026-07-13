@@ -229,6 +229,18 @@ class LauncherViewModel(
         viewModelScope.launch { favoritesStore.removeCustomLabel(key) }
     }
 
+    fun openClock() {
+        appsRepository.launchClock()
+    }
+
+    fun openCalendar() {
+        appsRepository.launchCalendar()
+    }
+
+    fun openScreenTime() {
+        screenTimeRepository.openScreenTime()
+    }
+
     fun openUsageAccessSettings() {
         screenTimeRepository.openUsageAccessSettings()
     }

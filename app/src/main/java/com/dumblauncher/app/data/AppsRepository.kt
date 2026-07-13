@@ -1,12 +1,16 @@
 package com.dumblauncher.app.data
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.AlarmClock
+import android.provider.CalendarContract
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -87,6 +91,73 @@ class AppsRepository(private val context: Context) {
             }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(launchIntent)
+    }
+
+    fun launchClock() {
+        val pm = context.packageManager
+        val showAlarms = Intent(AlarmClock.ACTION_SHOW_ALARMS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (startIfResolvable(showAlarms)) return
+
+        val clockPackages = listOf(
+            "com.google.android.deskclock",
+            "com.android.deskclock",
+            "com.sec.android.app.clockpackage",
+            "com.huawei.deskclock",
+            "com.coloros.alarmclock",
+        )
+        for (pkg in clockPackages) {
+            val intent = pm.getLaunchIntentForPackage(pkg)
+                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ?: continue
+            if (startIfResolvable(intent)) return
+        }
+    }
+
+    fun launchCalendar() {
+        val pm = context.packageManager
+        val now = System.currentTimeMillis()
+        val viewDay = Intent(Intent.ACTION_VIEW).apply {
+            data = ContentUris.withAppendedId(CalendarContract.CONTENT_URI, now)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (startIfResolvable(viewDay)) return
+
+        val appCalendar = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_APP_CALENDAR)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (startIfResolvable(appCalendar)) return
+
+        val calendarPackages = listOf(
+            "com.google.android.calendar",
+            "com.android.calendar",
+            "com.samsung.android.calendar",
+            "com.huawei.calendar",
+        )
+        for (pkg in calendarPackages) {
+            val intent = pm.getLaunchIntentForPackage(pkg)
+                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ?: continue
+            if (startIfResolvable(intent)) return
+        }
+    }
+
+    private fun startIfResolvable(intent: Intent): Boolean {
+        val pm = context.packageManager
+        val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.resolveActivity(intent, 0)
+        } ?: return false
+        intent.component = ComponentName(
+            resolved.activityInfo.packageName,
+            resolved.activityInfo.name,
+        )
+        return runCatching {
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
     }
 
     fun uninstall(packageName: String) {

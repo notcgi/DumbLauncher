@@ -86,7 +86,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun LauncherApp(viewModel: LauncherViewModel) {
+private fun LauncherApp(
+    viewModel: LauncherViewModel,
+) {
     val destination by viewModel.destination.collectAsStateWithLifecycle()
     val homeState by viewModel.homeState.collectAsStateWithLifecycle()
     val allAppsState by viewModel.allAppsState.collectAsStateWithLifecycle()
@@ -113,6 +115,9 @@ private fun LauncherApp(viewModel: LauncherViewModel) {
             onOpenAllApps = { viewModel.navigateTo(LauncherDestination.AllApps) },
             onOpenSettings = { viewModel.navigateTo(LauncherDestination.Settings) },
             onRequestUsageAccess = viewModel::openUsageAccessSettings,
+            onOpenClock = viewModel::openClock,
+            onOpenCalendar = viewModel::openCalendar,
+            onOpenScreenTime = viewModel::openScreenTime,
         )
 
         LauncherDestination.AllApps -> AllAppsScreen(
