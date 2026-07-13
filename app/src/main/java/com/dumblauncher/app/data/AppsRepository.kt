@@ -116,30 +116,73 @@ class AppsRepository(private val context: Context) {
 
     fun launchCalendar() {
         val pm = context.packageManager
-        val now = System.currentTimeMillis()
-        val viewDay = Intent(Intent.ACTION_VIEW).apply {
-            data = ContentUris.withAppendedId(CalendarContract.CONTENT_URI, now)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        if (startIfResolvable(viewDay)) return
 
         val appCalendar = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_APP_CALENDAR)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (startIfResolvable(appCalendar)) return
+        if (startCalendarIfResolvable(appCalendar)) return
 
-        val calendarPackages = listOf(
-            "com.google.android.calendar",
-            "com.android.calendar",
-            "com.samsung.android.calendar",
-            "com.huawei.calendar",
-        )
-        for (pkg in calendarPackages) {
+        for (pkg in KNOWN_CALENDAR_PACKAGES) {
             val intent = pm.getLaunchIntentForPackage(pkg)
                 ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: continue
             if (startIfResolvable(intent)) return
         }
+
+        val now = System.currentTimeMillis()
+        val viewIntents = listOf(
+            Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("content://com.android.calendar/time/$now")
+            },
+            Intent(Intent.ACTION_VIEW).apply {
+                data = ContentUris.withAppendedId(CalendarContract.CONTENT_URI, now)
+            },
+        )
+        for (viewIntent in viewIntents) {
+            viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (startCalendarIfResolvable(viewIntent)) return
+        }
+    }
+
+    private fun startCalendarIfResolvable(intent: Intent): Boolean {
+        val component = findCalendarComponent(intent) ?: return false
+        intent.component = component
+        return runCatching {
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun findCalendarComponent(intent: Intent): ComponentName? {
+        val pm = context.packageManager
+        val matches = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.queryIntentActivities(intent, 0)
+        }
+
+        for (pkg in KNOWN_CALENDAR_PACKAGES) {
+            val match = matches.firstOrNull { it.activityInfo?.packageName == pkg }
+            if (match != null) {
+                val info = match.activityInfo ?: continue
+                return ComponentName(info.packageName, info.name)
+            }
+        }
+
+        val calendarMatch = matches.firstOrNull { info ->
+            val pkg = info.activityInfo?.packageName ?: return@firstOrNull false
+            isCalendarPackage(pkg)
+        } ?: return null
+
+        val info = calendarMatch.activityInfo ?: return null
+        return ComponentName(info.packageName, info.name)
+    }
+
+    private fun isCalendarPackage(packageName: String): Boolean {
+        if (packageName in KNOWN_CALENDAR_PACKAGES) return true
+        return packageName.contains("calendar", ignoreCase = true) &&
+            !packageName.contains("provider", ignoreCase = true)
     }
 
     private fun startIfResolvable(intent: Intent): Boolean {
@@ -169,6 +212,15 @@ class AppsRepository(private val context: Context) {
     }
 
     companion object {
+        private val KNOWN_CALENDAR_PACKAGES = listOf(
+            "com.google.android.calendar",
+            "com.android.calendar",
+            "com.samsung.android.calendar",
+            "com.huawei.calendar",
+            "com.simplemobiletools.calendar.pro",
+            "com.simplemobiletools.calendar",
+        )
+
         fun applyCustomizations(
             apps: List<LaunchableApp>,
             hiddenKeys: Set<String>,

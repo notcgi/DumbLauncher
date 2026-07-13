@@ -75,6 +75,18 @@ class FavoritesStore(private val context: Context) {
         }
     }
 
+    suspend fun setHiddenAppKeys(keys: Set<String>) {
+        context.favoritesDataStore.edit { prefs ->
+            prefs[KEY_HIDDEN_APPS] = keys.joinToString(SEPARATOR)
+        }
+    }
+
+    suspend fun setCustomLabels(labels: Map<String, String>) {
+        context.favoritesDataStore.edit { prefs ->
+            prefs[KEY_CUSTOM_LABELS] = encodeCustomLabels(labels)
+        }
+    }
+
     suspend fun hideApp(key: String) {
         context.favoritesDataStore.edit { prefs ->
             val hidden = prefs[KEY_HIDDEN_APPS]

@@ -44,7 +44,7 @@ import kotlin.math.abs
 
 private val TopEdgeZoneHeight = 72.dp
 private val PanelSwipeThreshold = 32.dp
-private val AllAppsSwipeThreshold = 120.dp
+private val AllAppsSwipeThreshold = 72.dp
 
 private val HeaderSpacerHeight = 88.dp
 private val HeaderSpacerWithUsageHintHeight = 118.dp

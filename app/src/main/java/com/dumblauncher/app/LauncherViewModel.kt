@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -67,6 +68,37 @@ class LauncherViewModel(
     private val apps = settings
         .flatMapLatest { appsRepository.observeApps(it.hideSelf) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    init {
+        // Keep favorites/custom labels resilient to app updates (e.g. launcher activity renamed).
+        viewModelScope.launch {
+            combine(apps, settings) { appList, favSettings ->
+                val migratedFavorites = migrateKeys(
+                    keys = favSettings.favoriteKeys,
+                    apps = appList,
+                )
+                val migratedLabels = migrateLabels(
+                    labels = favSettings.customLabels,
+                    apps = appList,
+                )
+                MigrationResult(
+                    favorites = migratedFavorites,
+                    labels = migratedLabels,
+                    favoritesChanged = migratedFavorites != favSettings.favoriteKeys,
+                    labelsChanged = migratedLabels != favSettings.customLabels,
+                )
+            }
+                .distinctUntilChanged()
+                .collect { result ->
+                    if (result.favoritesChanged) {
+                        favoritesStore.setFavoriteKeys(result.favorites)
+                    }
+                    if (result.labelsChanged) {
+                        favoritesStore.setCustomLabels(result.labels)
+                    }
+                }
+        }
+    }
 
     private val clock = clockRepository.observeClock()
         .stateIn(viewModelScope, SharingStarted.Eagerly, ClockState("--:--", ""))
@@ -195,7 +227,7 @@ class LauncherViewModel(
     fun toggleFavorite(app: LaunchableApp) {
         viewModelScope.launch {
             val current = settings.value
-            val keys = current.favoriteKeys.toMutableList()
+            val keys = migrateKeys(current.favoriteKeys, apps.value).toMutableList()
             if (keys.contains(app.key)) {
                 keys.remove(app.key)
             } else if (keys.size < current.favoriteCount) {
@@ -267,4 +299,73 @@ class LauncherViewModel(
             ) as T
         }
     }
+}
+
+private data class MigrationResult(
+    val favorites: List<String>,
+    val labels: Map<String, String>,
+    val favoritesChanged: Boolean,
+    val labelsChanged: Boolean,
+)
+
+private fun migrateKeys(keys: List<String>, apps: List<LaunchableApp>): List<String> {
+    if (keys.isEmpty() || apps.isEmpty()) return keys
+
+    val availableKeys = apps.asSequence().map { it.key }.toSet()
+    val preferredKeyByPackage = LinkedHashMap<String, String>().apply {
+        for (app in apps) {
+            putIfAbsent(app.packageName, app.key)
+        }
+    }
+
+    val out = ArrayList<String>(keys.size)
+    val seen = HashSet<String>(keys.size)
+
+    fun add(key: String) {
+        if (seen.add(key)) out.add(key)
+    }
+
+    for (key in keys) {
+        if (key in availableKeys) {
+            add(key)
+            continue
+        }
+        val pkg = key.substringBefore('/', missingDelimiterValue = "")
+        val migrated = if (pkg.isNotBlank()) preferredKeyByPackage[pkg] else null
+        if (migrated != null) add(migrated)
+        // else: drop orphan key (uninstalled app / no longer launchable)
+    }
+    return out
+}
+
+private fun migrateLabels(labels: Map<String, String>, apps: List<LaunchableApp>): Map<String, String> {
+    if (labels.isEmpty() || apps.isEmpty()) return labels
+
+    val availableKeys = apps.asSequence().map { it.key }.toSet()
+    val preferredKeyByPackage = LinkedHashMap<String, String>().apply {
+        for (app in apps) {
+            putIfAbsent(app.packageName, app.key)
+        }
+    }
+
+    var changed = false
+    val out = LinkedHashMap<String, String>(labels.size)
+    for ((key, label) in labels) {
+        if (key in availableKeys) {
+            out[key] = label
+            continue
+        }
+
+        val pkg = key.substringBefore('/', missingDelimiterValue = "")
+        val migratedKey = if (pkg.isNotBlank()) preferredKeyByPackage[pkg] else null
+        if (migratedKey == null) {
+            changed = true
+            continue
+        }
+        if (!out.containsKey(migratedKey)) {
+            out[migratedKey] = label
+        }
+        changed = true
+    }
+    return if (changed) out else labels
 }
