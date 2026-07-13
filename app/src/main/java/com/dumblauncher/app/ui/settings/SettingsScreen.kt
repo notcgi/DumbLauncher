@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dumblauncher.app.SettingsUiState
+import com.dumblauncher.app.data.AppsRepository
 import com.dumblauncher.app.data.LaunchableApp
 import com.dumblauncher.app.ui.theme.EInkBlack
 import com.dumblauncher.app.ui.theme.EInkWhite
@@ -49,9 +50,7 @@ fun SettingsScreen(
     val byKey = remember(state.allApps) { state.allApps.associateBy { it.key } }
     val selectedApps = state.favoriteKeys.mapNotNull { byKey[it] }
     val filteredApps = remember(state.allApps, filter) {
-        val q = filter.trim().lowercase()
-        if (q.isEmpty()) state.allApps
-        else state.allApps.filter { it.label.lowercase().contains(q) }
+        AppsRepository.filterByQuery(state.allApps, filter)
     }
 
     LazyColumn(
@@ -155,7 +154,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = app.label,
+                    text = app.displayLabel,
                     color = EInkBlack,
                     fontSize = 18.sp,
                     maxLines = 1,
@@ -202,7 +201,7 @@ fun SettingsScreen(
             }
             items(state.hiddenApps, key = { "hidden-${it.key}" }) { app ->
                 Text(
-                    text = app.label,
+                    text = app.displayLabel,
                     color = EInkBlack,
                     fontSize = 18.sp,
                     maxLines = 1,
@@ -231,7 +230,7 @@ fun SettingsScreen(
             }
             items(state.renamedApps, key = { "renamed-${it.key}" }) { app ->
                 Text(
-                    text = app.label,
+                    text = app.displayLabel,
                     color = EInkBlack,
                     fontSize = 18.sp,
                     maxLines = 1,
@@ -280,7 +279,7 @@ fun SettingsScreen(
             val selected = state.favoriteKeys.contains(app.key)
             val mark = if (selected) "[x] " else "[ ] "
             Text(
-                text = mark + app.label,
+                text = mark + app.displayLabel,
                 color = EInkBlack,
                 fontSize = 18.sp,
                 maxLines = 1,

@@ -35,7 +35,7 @@ fun RenameAppDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var text by remember(app.key) { mutableStateOf(app.label) }
+    var text by remember(app.key) { mutableStateOf(app.displayLabel) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {

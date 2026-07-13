@@ -136,7 +136,7 @@ fun HomeScreen(
                         ) {
                             state.favorites.forEach { app ->
                                 Text(
-                                    text = app.label,
+                                    text = app.displayLabel,
                                     color = EInkBlack,
                                     fontSize = 28.sp,
                                     maxLines = 1,

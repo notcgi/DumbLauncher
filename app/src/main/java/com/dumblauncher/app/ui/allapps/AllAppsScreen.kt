@@ -150,7 +150,7 @@ fun AllAppsScreen(
         ) {
             items(state.apps, key = { it.key }) { app ->
                 Text(
-                    text = app.label,
+                    text = app.displayLabel,
                     color = EInkBlack,
                     fontSize = 24.sp,
                     maxLines = 1,

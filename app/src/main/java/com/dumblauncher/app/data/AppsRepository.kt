@@ -67,17 +67,18 @@ class AppsRepository(private val context: Context) {
                 val activityInfo = info.activityInfo ?: return@mapNotNull null
                 val packageName = activityInfo.packageName
                 if (hideSelf && packageName == selfPackage) return@mapNotNull null
-                val label = info.loadLabel(pm)?.toString()?.trim().orEmpty()
-                if (label.isEmpty()) return@mapNotNull null
+                val systemLabel = info.loadLabel(pm)?.toString()?.trim().orEmpty()
+                if (systemLabel.isEmpty()) return@mapNotNull null
                 LaunchableApp(
-                    label = label,
+                    systemLabel = systemLabel,
+                    displayLabel = systemLabel,
                     packageName = packageName,
                     activityName = activityInfo.name,
                 )
             }
             .distinctBy { it.key }
             .sortedWith(
-                compareBy(String.CASE_INSENSITIVE_ORDER) { it.label },
+                compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayLabel },
             )
     }
 
@@ -229,7 +230,8 @@ class AppsRepository(private val context: Context) {
             return apps
                 .filter { includeHidden || it.key !in hiddenKeys }
                 .map { app ->
-                    customLabels[app.key]?.let { custom -> app.copy(label = custom) } ?: app
+                    val custom = customLabels[app.key]?.trim()?.takeIf { it.isNotEmpty() }
+                    if (custom != null) app.copy(displayLabel = custom) else app
                 }
         }
 

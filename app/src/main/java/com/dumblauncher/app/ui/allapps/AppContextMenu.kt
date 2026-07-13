@@ -49,7 +49,7 @@ fun AppContextMenu(
                 .padding(vertical = 8.dp),
         ) {
             Text(
-                text = app.label,
+                text = app.displayLabel,
                 color = EInkBlack,
                 fontSize = 18.sp,
                 maxLines = 1,
