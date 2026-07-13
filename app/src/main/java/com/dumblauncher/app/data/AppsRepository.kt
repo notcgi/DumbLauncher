@@ -15,7 +15,6 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import java.util.Locale
 
 class AppsRepository(private val context: Context) {
 
@@ -235,9 +234,13 @@ class AppsRepository(private val context: Context) {
         }
 
         fun filterByQuery(apps: List<LaunchableApp>, query: String): List<LaunchableApp> {
-            val q = query.trim().lowercase(Locale.getDefault())
-            if (q.isEmpty()) return apps
-            return apps.filter { it.label.lowercase(Locale.getDefault()).contains(q) }
+            val queryVariants = SearchTransliteration.variants(query)
+            if (queryVariants.isEmpty()) return apps
+            return apps.filter { app ->
+                queryVariants.any { q ->
+                    app.searchKeys.any { key -> key.contains(q) }
+                }
+            }
         }
 
         /** Favorites first (stored order), then remaining apps in list order (typically A–Z). */
