@@ -1,5 +1,6 @@
 package com.dumblauncher.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -8,9 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -24,12 +22,6 @@ import com.dumblauncher.app.ui.allapps.AllAppsScreen
 import com.dumblauncher.app.ui.home.HomeScreen
 import com.dumblauncher.app.ui.settings.SettingsScreen
 import com.dumblauncher.app.ui.theme.EInkTheme
-
-private enum class LauncherDestination {
-    Home,
-    AllApps,
-    Settings,
-}
 
 class MainActivity : ComponentActivity() {
 
@@ -48,10 +40,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         hideStatusBar()
+        if (isHomeIntent(intent)) {
+            viewModel.goHome()
+        }
         setContent {
             EInkTheme {
                 LauncherApp(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (isHomeIntent(intent)) {
+            viewModel.goHome()
         }
     }
 
@@ -74,22 +77,26 @@ class MainActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
+
+    private fun isHomeIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
+        return intent.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_HOME)
+    }
 }
 
 @Composable
 private fun LauncherApp(viewModel: LauncherViewModel) {
-    var destination by remember { mutableStateOf(LauncherDestination.Home) }
+    val destination by viewModel.destination.collectAsStateWithLifecycle()
     val homeState by viewModel.homeState.collectAsStateWithLifecycle()
     val allAppsState by viewModel.allAppsState.collectAsStateWithLifecycle()
     val settingsState by viewModel.settingsState.collectAsStateWithLifecycle()
 
     BackHandler(enabled = destination != LauncherDestination.Home) {
         when (destination) {
-            LauncherDestination.AllApps -> {
-                viewModel.clearAllAppsQuery()
-                destination = LauncherDestination.Home
-            }
-            LauncherDestination.Settings -> destination = LauncherDestination.Home
+            LauncherDestination.AllApps,
+            LauncherDestination.Settings,
+            -> viewModel.goHome()
             LauncherDestination.Home -> Unit
         }
     }
@@ -103,11 +110,8 @@ private fun LauncherApp(viewModel: LauncherViewModel) {
         LauncherDestination.Home -> HomeScreen(
             state = homeState,
             onLaunch = viewModel::launch,
-            onOpenAllApps = {
-                viewModel.clearAllAppsQuery()
-                destination = LauncherDestination.AllApps
-            },
-            onOpenSettings = { destination = LauncherDestination.Settings },
+            onOpenAllApps = { viewModel.navigateTo(LauncherDestination.AllApps) },
+            onOpenSettings = { viewModel.navigateTo(LauncherDestination.Settings) },
             onRequestUsageAccess = viewModel::openUsageAccessSettings,
         )
 
@@ -118,15 +122,12 @@ private fun LauncherApp(viewModel: LauncherViewModel) {
             onHide = viewModel::hideApp,
             onRename = viewModel::renameApp,
             onUninstall = viewModel::uninstallApp,
-            onBack = {
-                viewModel.clearAllAppsQuery()
-                destination = LauncherDestination.Home
-            },
+            onBack = viewModel::goHome,
         )
 
         LauncherDestination.Settings -> SettingsScreen(
             state = settingsState,
-            onBack = { destination = LauncherDestination.Home },
+            onBack = viewModel::goHome,
             onFavoriteCountChange = viewModel::setFavoriteCount,
             onHideSelfChange = viewModel::setHideSelf,
             onToggleFavorite = viewModel::toggleFavorite,

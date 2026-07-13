@@ -46,6 +46,12 @@ data class SettingsUiState(
     val hasUsageAccess: Boolean = false,
 )
 
+enum class LauncherDestination {
+    Home,
+    AllApps,
+    Settings,
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LauncherViewModel(
     private val appsRepository: AppsRepository,
@@ -74,6 +80,9 @@ class LauncherViewModel(
         screenTimeRepository.observeTodayScreenTime(),
         usageAccessRefresh.map { screenTimeRepository.readTodayScreenTimeText() },
     ).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val _destination = MutableStateFlow(LauncherDestination.Home)
+    val destination: StateFlow<LauncherDestination> = _destination
 
     val allAppsQuery = MutableStateFlow("")
 
@@ -152,6 +161,19 @@ class LauncherViewModel(
 
     fun launch(app: LaunchableApp) {
         appsRepository.launch(app)
+    }
+
+    fun navigateTo(destination: LauncherDestination) {
+        if (destination == LauncherDestination.AllApps) {
+            clearAllAppsQuery()
+        }
+        _destination.value = destination
+    }
+
+    /** System Home / launcher: show main home and clear all-apps search. */
+    fun goHome() {
+        clearAllAppsQuery()
+        _destination.value = LauncherDestination.Home
     }
 
     fun setAllAppsQuery(query: String) {

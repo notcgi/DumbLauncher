@@ -28,6 +28,7 @@ import com.dumblauncher.app.HomeUiState
 import com.dumblauncher.app.data.LaunchableApp
 import com.dumblauncher.app.ui.theme.EInkBlack
 import com.dumblauncher.app.ui.theme.EInkWhite
+import kotlin.math.abs
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -47,7 +48,7 @@ fun HomeScreen(
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragEnd = {
-                        if (dragAccum > 120f) {
+                        if (abs(dragAccum) > 120f) {
                             onOpenAllApps()
                         }
                         dragAccum = 0f

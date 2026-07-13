@@ -3,7 +3,6 @@ package com.dumblauncher.app.ui.allapps
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -22,22 +22,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dumblauncher.app.AllAppsUiState
 import com.dumblauncher.app.data.LaunchableApp
 import com.dumblauncher.app.ui.theme.EInkBlack
 import com.dumblauncher.app.ui.theme.EInkWhite
+
+private const val DismissDragThresholdPx = 120f
 
 /**
  * Full app list. Search field is intentionally invisible —
@@ -55,9 +62,54 @@ fun AllAppsScreen(
     onBack: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    var dragAccum by remember { mutableFloatStateOf(0f) }
+    val listState = rememberLazyListState()
+    var dismissAccum by remember { mutableFloatStateOf(0f) }
     var menuApp by remember { mutableStateOf<LaunchableApp?>(null) }
     var renameApp by remember { mutableStateOf<LaunchableApp?>(null) }
+    val onBackUpdated by rememberUpdatedState(onBack)
+
+    val dismissNestedScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // At top: intercept pull-down so it dismisses instead of overscrolling.
+                if (available.y > 0f && !listState.canScrollBackward) {
+                    dismissAccum += available.y
+                    if (dismissAccum >= DismissDragThresholdPx) {
+                        dismissAccum = 0f
+                        onBackUpdated()
+                    }
+                    return Offset(x = 0f, y = available.y)
+                }
+                // Direction change cancels an in-progress pull-down.
+                if (available.y < 0f && dismissAccum > 0f) {
+                    dismissAccum = 0f
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                // Unconsumed upward scroll (e.g. at bottom / short list): swipe-up to close.
+                if (available.y < 0f) {
+                    dismissAccum += available.y
+                    if (dismissAccum <= -DismissDragThresholdPx) {
+                        dismissAccum = 0f
+                        onBackUpdated()
+                    }
+                    return Offset(x = 0f, y = available.y)
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                dismissAccum = 0f
+                return Velocity.Zero
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -74,22 +126,7 @@ fun AllAppsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(EInkWhite)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        if (dragAccum < -120f) {
-                            onBack()
-                        }
-                        dragAccum = 0f
-                    },
-                    onDragCancel = { dragAccum = 0f },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        dragAccum += dragAmount
-                    },
-                )
-            },
+            .background(EInkWhite),
     ) {
         // Hidden type-ahead input — no visible search field.
         BasicTextField(
@@ -109,9 +146,11 @@ fun AllAppsScreen(
         )
 
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 28.dp),
+                .padding(horizontal = 28.dp)
+                .nestedScroll(dismissNestedScroll),
             contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

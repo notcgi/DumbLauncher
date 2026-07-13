@@ -3,7 +3,6 @@ package com.dumblauncher.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Slider
@@ -58,109 +58,122 @@ fun SettingsScreen(
         else state.allApps.filter { it.label.lowercase().contains(q) }
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(EInkWhite)
             .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Back",
-                color = EInkBlack,
-                fontSize = 18.sp,
-                modifier = Modifier.clickable(onClick = onBack),
-            )
-            Text(
-                text = "Settings",
-                color = EInkBlack,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(1.dp))
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Back",
+                    color = EInkBlack,
+                    fontSize = 18.sp,
+                    modifier = Modifier.clickable(onClick = onBack),
+                )
+                Text(
+                    text = "Settings",
+                    color = EInkBlack,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(1.dp))
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        item { Spacer(modifier = Modifier.height(20.dp)) }
 
-        Text(
-            text = "Favorites count: ${state.favoriteCount}",
-            color = EInkBlack,
-            fontSize = 16.sp,
-        )
-        Slider(
-            value = state.favoriteCount.toFloat(),
-            onValueChange = { onFavoriteCountChange(it.toInt()) },
-            valueRange = FavoritesStore.MIN_COUNT.toFloat()..FavoritesStore.MAX_COUNT.toFloat(),
-            steps = FavoritesStore.MAX_COUNT - FavoritesStore.MIN_COUNT - 1,
-            colors = SliderDefaults.colors(
-                thumbColor = EInkBlack,
-                activeTrackColor = EInkBlack,
-                inactiveTrackColor = EInkBlack.copy(alpha = 0.3f),
-            ),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        item {
             Text(
-                text = "Hide DumbLauncher",
+                text = "Favorites count: ${state.favoriteCount}",
                 color = EInkBlack,
                 fontSize = 16.sp,
-                modifier = Modifier.weight(1f),
             )
-            Switch(
-                checked = state.hideSelf,
-                onCheckedChange = onHideSelfChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = EInkWhite,
-                    checkedTrackColor = EInkBlack,
-                    uncheckedThumbColor = EInkBlack,
-                    uncheckedTrackColor = EInkWhite,
-                    uncheckedBorderColor = EInkBlack,
+        }
+
+        item {
+            Slider(
+                value = state.favoriteCount.toFloat(),
+                onValueChange = { onFavoriteCountChange(it.toInt()) },
+                valueRange = FavoritesStore.MIN_COUNT.toFloat()..FavoritesStore.MAX_COUNT.toFloat(),
+                steps = FavoritesStore.MAX_COUNT - FavoritesStore.MIN_COUNT - 1,
+                colors = SliderDefaults.colors(
+                    thumbColor = EInkBlack,
+                    activeTrackColor = EInkBlack,
+                    inactiveTrackColor = EInkBlack.copy(alpha = 0.3f),
                 ),
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Hide DumbLauncher",
+                    color = EInkBlack,
+                    fontSize = 16.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = state.hideSelf,
+                    onCheckedChange = onHideSelfChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = EInkWhite,
+                        checkedTrackColor = EInkBlack,
+                        uncheckedThumbColor = EInkBlack,
+                        uncheckedTrackColor = EInkWhite,
+                        uncheckedBorderColor = EInkBlack,
+                    ),
+                )
+            }
+        }
 
-        if (!state.hasUsageAccess) {
+        item {
+            if (!state.hasUsageAccess) {
+                Text(
+                    text = "Open usage access settings",
+                    color = EInkBlack,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenUsageAccess)
+                        .padding(vertical = 8.dp),
+                )
+            } else {
+                Text(
+                    text = "Usage access granted",
+                    color = EInkBlack,
+                    fontSize = 16.sp,
+                )
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = EInkBlack)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        item {
             Text(
-                text = "Open usage access settings",
+                text = "Favorites (${selectedApps.size}/${state.favoriteCount})",
                 color = EInkBlack,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenUsageAccess)
-                    .padding(vertical = 8.dp),
-            )
-        } else {
-            Text(
-                text = "Usage access granted",
-                color = EInkBlack,
-                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        HorizontalDivider(color = EInkBlack)
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "Favorites (${selectedApps.size}/${state.favoriteCount})",
-            color = EInkBlack,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        selectedApps.forEachIndexed { index, app ->
+        itemsIndexed(selectedApps, key = { _, app -> "fav-${app.key}" }) { index, app ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -198,19 +211,22 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        HorizontalDivider(color = EInkBlack)
-        Spacer(modifier = Modifier.height(12.dp))
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider(color = EInkBlack)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         if (state.hiddenApps.isNotEmpty()) {
-            Text(
-                text = "Hidden apps (tap to show)",
-                color = EInkBlack,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            state.hiddenApps.forEach { app ->
+            item {
+                Text(
+                    text = "Hidden apps (tap to show)",
+                    color = EInkBlack,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            items(state.hiddenApps, key = { "hidden-${it.key}" }) { app ->
                 Text(
                     text = app.label,
                     color = EInkBlack,
@@ -223,20 +239,23 @@ fun SettingsScreen(
                         .padding(vertical = 8.dp),
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = EInkBlack)
-            Spacer(modifier = Modifier.height(12.dp))
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = EInkBlack)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
 
         if (state.renamedApps.isNotEmpty()) {
-            Text(
-                text = "Renamed apps (tap to reset)",
-                color = EInkBlack,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            state.renamedApps.forEach { app ->
+            item {
+                Text(
+                    text = "Renamed apps (tap to reset)",
+                    color = EInkBlack,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            items(state.renamedApps, key = { "renamed-${it.key}" }) { app ->
                 Text(
                     text = app.label,
                     color = EInkBlack,
@@ -249,53 +268,54 @@ fun SettingsScreen(
                         .padding(vertical = 8.dp),
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = EInkBlack)
-            Spacer(modifier = Modifier.height(12.dp))
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = EInkBlack)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
 
-        Text(
-            text = "All apps (tap to toggle)",
-            color = EInkBlack,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        item {
+            Text(
+                text = "All apps (tap to toggle)",
+                color = EInkBlack,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
 
-        BasicTextField(
-            value = filter,
-            onValueChange = { filter = it },
-            singleLine = true,
-            textStyle = TextStyle(color = EInkBlack, fontSize = 16.sp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            decorationBox = { inner ->
-                if (filter.isEmpty()) {
-                    Text("Filter…", color = EInkBlack.copy(alpha = 0.4f), fontSize = 16.sp)
-                }
-                inner()
-            },
-        )
+        item {
+            BasicTextField(
+                value = filter,
+                onValueChange = { filter = it },
+                singleLine = true,
+                textStyle = TextStyle(color = EInkBlack, fontSize = 16.sp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                decorationBox = { inner ->
+                    if (filter.isEmpty()) {
+                        Text("Filter…", color = EInkBlack.copy(alpha = 0.4f), fontSize = 16.sp)
+                    }
+                    inner()
+                },
+            )
+        }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            items(filteredApps, key = { it.key }) { app ->
-                val selected = state.favoriteKeys.contains(app.key)
-                val mark = if (selected) "[x] " else "[ ] "
-                Text(
-                    text = mark + app.label,
-                    color = EInkBlack,
-                    fontSize = 18.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onToggleFavorite(app) }
-                        .padding(vertical = 8.dp),
-                )
-            }
+        items(filteredApps, key = { it.key }) { app ->
+            val selected = state.favoriteKeys.contains(app.key)
+            val mark = if (selected) "[x] " else "[ ] "
+            Text(
+                text = mark + app.label,
+                color = EInkBlack,
+                fontSize = 18.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleFavorite(app) }
+                    .padding(vertical = 8.dp),
+            )
         }
     }
 }
