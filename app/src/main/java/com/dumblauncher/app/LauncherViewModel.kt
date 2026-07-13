@@ -28,7 +28,6 @@ data class HomeUiState(
     val batteryPercent: Int = 0,
     val screenTimeText: String? = null,
     val favorites: List<LaunchableApp> = emptyList(),
-    val favoriteCount: Int = FavoritesStore.DEFAULT_COUNT,
     val hasUsageAccess: Boolean = false,
 )
 
@@ -38,7 +37,6 @@ data class AllAppsUiState(
 )
 
 data class SettingsUiState(
-    val favoriteCount: Int = FavoritesStore.DEFAULT_COUNT,
     val hideSelf: Boolean = true,
     val favoriteKeys: List<String> = emptyList(),
     val allApps: List<LaunchableApp> = emptyList(),
@@ -132,13 +130,12 @@ class LauncherViewModel(
         )
         val byKey = customized.associateBy { it.key }
         val favorites = favSettings.favoriteKeys.mapNotNull { byKey[it] }
-            .take(favSettings.favoriteCount)
+            .take(FavoritesStore.MAX_FAVORITES)
         HomeUiState(
             clock = clockState,
             batteryPercent = batteryPercent,
             screenTimeText = screenTimeText,
             favorites = favorites,
-            favoriteCount = favSettings.favoriteCount,
             hasUsageAccess = screenTimeRepository.hasUsageAccess(),
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
@@ -156,8 +153,9 @@ class LauncherViewModel(
             hiddenKeys = favSettings.hiddenAppKeys,
             customLabels = favSettings.customLabels,
         )
+        val ordered = AppsRepository.withFavoritesFirst(visible, favSettings.favoriteKeys)
         AllAppsUiState(
-            apps = AppsRepository.filterByQuery(visible, query),
+            apps = AppsRepository.filterByQuery(ordered, query),
             query = query,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AllAppsUiState())
@@ -181,7 +179,6 @@ class LauncherViewModel(
         val hiddenApps = favSettings.hiddenAppKeys.mapNotNull { byKey[it] }
         val renamedApps = favSettings.customLabels.keys.mapNotNull { byKey[it] }
         SettingsUiState(
-            favoriteCount = favSettings.favoriteCount,
             hideSelf = favSettings.hideSelf,
             favoriteKeys = favSettings.favoriteKeys,
             allApps = customized,
@@ -216,10 +213,6 @@ class LauncherViewModel(
         allAppsQuery.value = ""
     }
 
-    fun setFavoriteCount(count: Int) {
-        viewModelScope.launch { favoritesStore.setFavoriteCount(count) }
-    }
-
     fun setHideSelf(hide: Boolean) {
         viewModelScope.launch { favoritesStore.setHideSelf(hide) }
     }
@@ -230,9 +223,10 @@ class LauncherViewModel(
             val keys = migrateKeys(current.favoriteKeys, apps.value).toMutableList()
             if (keys.contains(app.key)) {
                 keys.remove(app.key)
-            } else if (keys.size < current.favoriteCount) {
+            } else if (keys.size < FavoritesStore.MAX_FAVORITES) {
                 keys.add(app.key)
             }
+            // At cap: ignore add attempts (no replace, no toast).
             favoritesStore.setFavoriteKeys(keys)
         }
     }
@@ -309,7 +303,7 @@ private data class MigrationResult(
 )
 
 private fun migrateKeys(keys: List<String>, apps: List<LaunchableApp>): List<String> {
-    if (keys.isEmpty() || apps.isEmpty()) return keys
+    if (keys.isEmpty() || apps.isEmpty()) return keys.take(FavoritesStore.MAX_FAVORITES)
 
     val availableKeys = apps.asSequence().map { it.key }.toSet()
     val preferredKeyByPackage = LinkedHashMap<String, String>().apply {
@@ -318,10 +312,11 @@ private fun migrateKeys(keys: List<String>, apps: List<LaunchableApp>): List<Str
         }
     }
 
-    val out = ArrayList<String>(keys.size)
+    val out = ArrayList<String>(keys.size.coerceAtMost(FavoritesStore.MAX_FAVORITES))
     val seen = HashSet<String>(keys.size)
 
     fun add(key: String) {
+        if (out.size >= FavoritesStore.MAX_FAVORITES) return
         if (seen.add(key)) out.add(key)
     }
 

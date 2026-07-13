@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -16,7 +15,6 @@ private val Context.favoritesDataStore: DataStore<Preferences> by preferencesDat
 )
 
 data class FavoritesSettings(
-    val favoriteCount: Int = FavoritesStore.DEFAULT_COUNT,
     val favoriteKeys: List<String> = emptyList(),
     val hideSelf: Boolean = true,
     val hiddenAppKeys: Set<String> = emptySet(),
@@ -26,11 +24,11 @@ data class FavoritesSettings(
 class FavoritesStore(private val context: Context) {
 
     val settings: Flow<FavoritesSettings> = context.favoritesDataStore.data.map { prefs ->
-        val count = (prefs[KEY_COUNT] ?: DEFAULT_COUNT).coerceIn(MIN_COUNT, MAX_COUNT)
         val keys = prefs[KEY_FAVORITES]
             ?.split(SEPARATOR)
             ?.filter { it.isNotBlank() }
             .orEmpty()
+            .take(MAX_FAVORITES)
         val hiddenKeys = prefs[KEY_HIDDEN_APPS]
             ?.split(SEPARATOR)
             ?.filter { it.isNotBlank() }
@@ -49,7 +47,6 @@ class FavoritesStore(private val context: Context) {
             ?.toMap()
             .orEmpty()
         FavoritesSettings(
-            favoriteCount = count,
             favoriteKeys = keys,
             hideSelf = prefs[KEY_HIDE_SELF] ?: true,
             hiddenAppKeys = hiddenKeys,
@@ -57,15 +54,9 @@ class FavoritesStore(private val context: Context) {
         )
     }
 
-    suspend fun setFavoriteCount(count: Int) {
-        context.favoritesDataStore.edit { prefs ->
-            prefs[KEY_COUNT] = count.coerceIn(MIN_COUNT, MAX_COUNT)
-        }
-    }
-
     suspend fun setFavoriteKeys(keys: List<String>) {
         context.favoritesDataStore.edit { prefs ->
-            prefs[KEY_FAVORITES] = keys.joinToString(SEPARATOR)
+            prefs[KEY_FAVORITES] = keys.take(MAX_FAVORITES).joinToString(SEPARATOR)
         }
     }
 
@@ -157,13 +148,10 @@ class FavoritesStore(private val context: Context) {
     }
 
     companion object {
-        const val MIN_COUNT = 3
-        const val MAX_COUNT = 12
-        const val DEFAULT_COUNT = 5
+        const val MAX_FAVORITES = 10
 
         private const val SEPARATOR = "\u001F"
         private const val LABEL_SEPARATOR = "\u001E"
-        private val KEY_COUNT = intPreferencesKey("favorite_count")
         private val KEY_FAVORITES = stringPreferencesKey("favorite_keys")
         private val KEY_HIDE_SELF = booleanPreferencesKey("hide_self")
         private val KEY_HIDDEN_APPS = stringPreferencesKey("hidden_app_keys")

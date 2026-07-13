@@ -133,7 +133,6 @@ private fun LauncherApp(
         LauncherDestination.Settings -> SettingsScreen(
             state = settingsState,
             onBack = viewModel::goHome,
-            onFavoriteCountChange = viewModel::setFavoriteCount,
             onHideSelfChange = viewModel::setHideSelf,
             onToggleFavorite = viewModel::toggleFavorite,
             onMoveFavorite = viewModel::moveFavorite,

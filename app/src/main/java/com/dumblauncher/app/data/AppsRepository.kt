@@ -239,5 +239,19 @@ class AppsRepository(private val context: Context) {
             if (q.isEmpty()) return apps
             return apps.filter { it.label.lowercase(Locale.getDefault()).contains(q) }
         }
+
+        /** Favorites first (stored order), then remaining apps in list order (typically A–Z). */
+        fun withFavoritesFirst(
+            apps: List<LaunchableApp>,
+            favoriteKeys: List<String>,
+        ): List<LaunchableApp> {
+            if (favoriteKeys.isEmpty() || apps.isEmpty()) return apps
+            val byKey = apps.associateBy { it.key }
+            val favorites = favoriteKeys.mapNotNull { byKey[it] }
+            if (favorites.isEmpty()) return apps
+            val favoriteKeySet = favorites.map { it.key }.toSet()
+            val rest = apps.filter { it.key !in favoriteKeySet }
+            return favorites + rest
+        }
     }
 }

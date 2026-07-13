@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -32,7 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dumblauncher.app.SettingsUiState
-import com.dumblauncher.app.data.FavoritesStore
 import com.dumblauncher.app.data.LaunchableApp
 import com.dumblauncher.app.ui.theme.EInkBlack
 import com.dumblauncher.app.ui.theme.EInkWhite
@@ -41,7 +38,6 @@ import com.dumblauncher.app.ui.theme.EInkWhite
 fun SettingsScreen(
     state: SettingsUiState,
     onBack: () -> Unit,
-    onFavoriteCountChange: (Int) -> Unit,
     onHideSelfChange: (Boolean) -> Unit,
     onToggleFavorite: (LaunchableApp) -> Unit,
     onMoveFavorite: (String, Int) -> Unit,
@@ -88,28 +84,6 @@ fun SettingsScreen(
         }
 
         item { Spacer(modifier = Modifier.height(20.dp)) }
-
-        item {
-            Text(
-                text = "Favorites count: ${state.favoriteCount}",
-                color = EInkBlack,
-                fontSize = 16.sp,
-            )
-        }
-
-        item {
-            Slider(
-                value = state.favoriteCount.toFloat(),
-                onValueChange = { onFavoriteCountChange(it.toInt()) },
-                valueRange = FavoritesStore.MIN_COUNT.toFloat()..FavoritesStore.MAX_COUNT.toFloat(),
-                steps = FavoritesStore.MAX_COUNT - FavoritesStore.MIN_COUNT - 1,
-                colors = SliderDefaults.colors(
-                    thumbColor = EInkBlack,
-                    activeTrackColor = EInkBlack,
-                    inactiveTrackColor = EInkBlack.copy(alpha = 0.3f),
-                ),
-            )
-        }
 
         item {
             Row(
@@ -166,7 +140,7 @@ fun SettingsScreen(
 
         item {
             Text(
-                text = "Favorites (${selectedApps.size}/${state.favoriteCount})",
+                text = "Favorites",
                 color = EInkBlack,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
