@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DumbLauncher</string>
+    <string name="settings">Settings</string>
+    <string name="favorites_count">Favorites count</string>
+    <string name="hide_self">Hide DumbLauncher from app list</string>
+    <string name="usage_access">Grant usage access for screen time</string>
+    <string name="open_usage_access">Open usage access settings</string>
+    <string name="favorites">Favorites</string>
+    <string name="move_up">Up</string>
+    <string name="move_down">Down</string>
+    <string name="back">Back</string>
+    <string name="no_usage_permission">—</string>
+</resources>
