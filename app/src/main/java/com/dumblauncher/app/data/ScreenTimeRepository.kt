@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -20,8 +21,25 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.LocalDate
 import java.time.ZoneId
-
 class ScreenTimeRepository(private val context: Context) {
+
+    private val packageManager: PackageManager = context.packageManager
+
+    private val launcherPackages: Set<String> by lazy {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                homeIntent,
+                PackageManager.ResolveInfoFlags.of(0L),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(homeIntent, 0)
+        }
+        resolved.mapNotNull { it.activityInfo?.packageName }.toSet()
+    }
+
+    private val countablePackageCache = HashMap<String, Boolean>()
 
     fun hasUsageAccess(): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -152,24 +170,28 @@ class ScreenTimeRepository(private val context: Context) {
         if (end <= start) return 0L
 
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val totalMs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val filteredMs = sumForegroundMsFromEvents(usm, start, end)
+        val rawAggregateMs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             usm.queryAndAggregateUsageStats(start, end)
                 .values
                 .sumOf { it.totalTimeInForeground }
         } else {
-            sumForegroundMsFromEvents(usm, start, end)
+            0L
         }
 
         Log.d(
             TAG,
-            "queryTodayTotalMs start=$start end=$end totalMs=$totalMs text=${formatDuration(totalMs)}",
+            "queryTodayTotalMs start=$start end=$end " +
+                "filteredMs=$filteredMs rawAggregateMs=$rawAggregateMs " +
+                "text=${formatDuration(filteredMs)}",
         )
-        return totalMs
+        return filteredMs
     }
 
     /**
-     * Sum foreground durations from usage events within [startMs, endMs].
-     * Used on API 26–27 where [UsageStatsManager.queryAndAggregateUsageStats] is unavailable.
+     * Sum today's foreground time by walking usage events once, tracking a single
+     * foreground app at a time. Matches Digital Wellbeing by excluding system packages,
+     * launchers, and overlays from the total.
      */
     private fun sumForegroundMsFromEvents(
         usm: UsageStatsManager,
@@ -178,35 +200,79 @@ class ScreenTimeRepository(private val context: Context) {
     ): Long {
         val events = usm.queryEvents(startMs, endMs)
         val event = UsageEvents.Event()
-        val activeSince = HashMap<String, Long>()
+        var foregroundPkg: String? = null
+        var foregroundSince = 0L
         var totalMs = 0L
+
+        fun closeSession(untilMs: Long) {
+            val pkg = foregroundPkg ?: return
+            if (!countsTowardScreenTime(pkg)) return
+            val sessionStart = foregroundSince.coerceAtLeast(startMs)
+            val sessionEnd = untilMs.coerceAtMost(endMs)
+            if (sessionEnd > sessionStart) {
+                totalMs += sessionEnd - sessionStart
+            }
+        }
 
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName ?: continue
+            val timestamp = event.timeStamp
+
             when (event.eventType) {
                 UsageEvents.Event.MOVE_TO_FOREGROUND,
                 UsageEvents.Event.ACTIVITY_RESUMED,
                 -> {
                     if (isResumeEvent(event.eventType)) {
-                        activeSince[pkg] = event.timeStamp.coerceAtLeast(startMs)
+                        closeSession(timestamp)
+                        foregroundPkg = pkg
+                        foregroundSince = timestamp
                     }
                 }
                 UsageEvents.Event.MOVE_TO_BACKGROUND,
                 UsageEvents.Event.ACTIVITY_PAUSED,
                 -> {
-                    if (isPauseEvent(event.eventType)) {
-                        val sessionStart = activeSince.remove(pkg) ?: continue
-                        totalMs += (event.timeStamp.coerceAtMost(endMs) - sessionStart).coerceAtLeast(0)
+                    if (isPauseEvent(event.eventType) && pkg == foregroundPkg) {
+                        closeSession(timestamp)
+                        foregroundPkg = null
                     }
                 }
             }
         }
 
-        for ((_, sessionStart) in activeSince) {
-            totalMs += (endMs - sessionStart).coerceAtLeast(0)
-        }
+        closeSession(endMs)
         return totalMs
+    }
+
+    private fun countsTowardScreenTime(packageName: String): Boolean {
+        return countablePackageCache.getOrPut(packageName) {
+            countsTowardScreenTimeUncached(packageName)
+        }
+    }
+
+    private fun countsTowardScreenTimeUncached(packageName: String): Boolean {
+        if (packageName in ALWAYS_EXCLUDED_PACKAGES) return false
+        if (packageName in launcherPackages) return false
+        if (packageName == context.packageName) return false
+
+        val appInfo = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.ApplicationInfoFlags.of(0L),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName, 0)
+            }
+        }.getOrNull() ?: return false
+
+        val isSystem = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0
+        val isUpdatedSystem = appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
+        if (isSystem && !isUpdatedSystem) return false
+
+        if (packageName.contains(".overlay", ignoreCase = true)) return false
+        return true
     }
 
     private fun isResumeEvent(type: Int): Boolean {
@@ -227,6 +293,14 @@ class ScreenTimeRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "ScreenTimeRepository"
+
+        private val ALWAYS_EXCLUDED_PACKAGES = setOf(
+            "android",
+            "com.android.systemui",
+            "com.google.android.gms",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.apps.wellbeing",
+        )
 
         fun formatDuration(ms: Long): String {
             val totalMinutes = (ms / 60_000L).coerceAtLeast(0)
