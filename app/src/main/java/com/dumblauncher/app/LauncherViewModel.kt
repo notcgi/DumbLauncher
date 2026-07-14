@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 data class HomeUiState(
     val clock: ClockState = ClockState("--:--", ""),
@@ -105,6 +106,7 @@ class LauncherViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     private val usageAccessRefresh = MutableStateFlow(0L)
+    private var screenTimeLocalDate: LocalDate = LocalDate.now()
 
     private val screenTime = merge(
         screenTimeRepository.observeTodayScreenTime(),
@@ -272,6 +274,10 @@ class LauncherViewModel(
     }
 
     fun refreshUsageAccess() {
+        val today = LocalDate.now()
+        if (today != screenTimeLocalDate) {
+            screenTimeLocalDate = today
+        }
         usageAccessRefresh.value = System.currentTimeMillis()
     }
 
