@@ -38,7 +38,13 @@ class ScreenTimeRepository(private val context: Context) {
             @Suppress("DEPRECATION")
             packageManager.queryIntentActivities(homeIntent, matchFlags)
         }
-        resolved.mapNotNull { it.activityInfo?.packageName }.toSet()
+        // Skip FallbackHome — Settings registers CATEGORY_HOME for boot, but Wellbeing
+        // still counts Settings screen time and users may want Fluid counted too.
+        resolved.mapNotNull { ri ->
+            val info = ri.activityInfo ?: return@mapNotNull null
+            if (info.name?.contains("FallbackHome") == true) return@mapNotNull null
+            info.packageName
+        }.toSet() - FORCE_COUNT_PACKAGES
     }
 
     private val inputMethodPackages: Set<String> by lazy {
@@ -297,6 +303,9 @@ class ScreenTimeRepository(private val context: Context) {
                 UsageEvents.Event.ACTIVITY_PAUSED,
                 UsageEvents.Event.ACTIVITY_STOPPED,
                 -> {
+                    // End only on pause/background. ACTIVITY_STOPPED for an older
+                    // activity in the same package often arrives after a new activity
+                    // resumed, which would truncate the current session.
                     if (isEndEvent(event.eventType) && pkg == foregroundPkg) {
                         closeSession(timestamp)
                         foregroundPkg = null
@@ -320,6 +329,7 @@ class ScreenTimeRepository(private val context: Context) {
     }
 
     private fun countsTowardScreenTimeUncached(packageName: String): Boolean {
+        if (packageName in FORCE_COUNT_PACKAGES) return true
         if (packageName in ALWAYS_EXCLUDED_PACKAGES) return false
         if (packageName in launcherPackages) return false
         if (packageName in inputMethodPackages) return false
@@ -351,23 +361,36 @@ class ScreenTimeRepository(private val context: Context) {
     }
 
     private fun isEndEvent(type: Int): Boolean {
-        return type == UsageEvents.Event.ACTIVITY_STOPPED ||
+        // On Q+, ACTIVITY_PAUSED is the correct session end. STOPPED for a prior
+        // activity in the same package can fire after the next activity resumed.
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             type == UsageEvents.Event.ACTIVITY_PAUSED ||
-            type == UsageEvents.Event.MOVE_TO_BACKGROUND
+                type == UsageEvents.Event.MOVE_TO_BACKGROUND
+        } else {
+            type == UsageEvents.Event.ACTIVITY_STOPPED ||
+                type == UsageEvents.Event.MOVE_TO_BACKGROUND
+        }
     }
 
     companion object {
         private const val TAG = "ScreenTimeRepository"
 
+        /**
+         * Apps Digital Wellbeing counts that other filters would drop:
+         * Fluid (gestures / optional HOME) and Settings (system + FallbackHome).
+         */
+        private val FORCE_COUNT_PACKAGES = setOf(
+            "com.fb.fluid",
+            "com.android.settings",
+        )
+
         private val ALWAYS_EXCLUDED_PACKAGES = setOf(
             "android",
-            "com.android.settings",
             "com.android.systemui",
             "com.google.android.gms",
             "com.google.android.inputmethod.latin",
             "com.google.android.apps.wellbeing",
             "com.xrz.standby",
-            "com.fb.fluid",
         )
 
         fun formatDuration(ms: Long): String {
