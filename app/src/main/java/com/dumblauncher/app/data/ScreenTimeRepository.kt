@@ -2,20 +2,22 @@ package com.dumblauncher.app.data
 
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import java.util.Calendar
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import java.time.LocalDate
+import java.time.ZoneId
 
 class ScreenTimeRepository(private val context: Context) {
 
@@ -97,23 +99,49 @@ class ScreenTimeRepository(private val context: Context) {
     fun readTodayScreenTimeText(): String? =
         if (hasUsageAccess()) formatDuration(queryTodayTotalMs()) else null
 
-    fun observeTodayScreenTime(): Flow<String?> = flow {
-        while (true) {
-            emit(readTodayScreenTimeText())
-            delay(60_000L)
+    fun observeTodayScreenTime(): Flow<String?> = callbackFlow {
+        fun emitNow() {
+            trySend(readTodayScreenTimeText())
         }
-    }.flowOn(Dispatchers.Default)
+
+        emitNow()
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                emitNow()
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_TICK)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_DATE_CHANGED)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
+
+        awaitClose {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+    }.distinctUntilChanged()
+
+    private fun startOfTodayMs(): Long {
+        val zone = ZoneId.systemDefault()
+        return LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+    }
 
     private fun queryTodayTotalMs(): Long {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val start = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        val start = startOfTodayMs()
         val end = System.currentTimeMillis()
-        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+        if (end <= start) return 0L
+        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, start, end)
             ?: return 0L
         return stats.sumOf { it.totalTimeInForeground }
     }
