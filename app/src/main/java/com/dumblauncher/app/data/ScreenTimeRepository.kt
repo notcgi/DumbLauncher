@@ -170,22 +170,35 @@ class ScreenTimeRepository(private val context: Context) {
         if (end <= start) return 0L
 
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val filteredMs = sumForegroundMsFromEvents(usm, start, end)
-        val rawAggregateMs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            usm.queryAndAggregateUsageStats(start, end)
-                .values
-                .sumOf { it.totalTimeInForeground }
+        val totalMs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            sumFilteredAggregateMs(usm, start, end)
         } else {
-            0L
+            sumForegroundMsFromEvents(usm, start, end)
         }
 
         Log.d(
             TAG,
-            "queryTodayTotalMs start=$start end=$end " +
-                "filteredMs=$filteredMs rawAggregateMs=$rawAggregateMs " +
-                "text=${formatDuration(filteredMs)}",
+            "queryTodayTotalMs start=$start end=$end totalMs=$totalMs text=${formatDuration(totalMs)}",
         )
-        return filteredMs
+        return totalMs
+    }
+
+    /**
+     * Sum per-package foreground time for [startMs, endMs], excluding system UI and
+     * launchers the way Digital Wellbeing does. Range-bound aggregation avoids
+     * attributing pre-midnight usage to today.
+     */
+    private fun sumFilteredAggregateMs(
+        usm: UsageStatsManager,
+        startMs: Long,
+        endMs: Long,
+    ): Long {
+        return usm.queryAndAggregateUsageStats(startMs, endMs)
+            .asSequence()
+            .filter { (pkg, stat) ->
+                countsTowardScreenTime(pkg) && stat.lastTimeUsed >= startMs
+            }
+            .sumOf { (_, stat) -> stat.totalTimeInForeground }
     }
 
     /**
@@ -226,16 +239,21 @@ class ScreenTimeRepository(private val context: Context) {
                     if (isResumeEvent(event.eventType)) {
                         closeSession(timestamp)
                         foregroundPkg = pkg
-                        foregroundSince = timestamp
+                        foregroundSince = timestamp.coerceAtLeast(startMs)
                     }
                 }
                 UsageEvents.Event.MOVE_TO_BACKGROUND,
                 UsageEvents.Event.ACTIVITY_PAUSED,
+                UsageEvents.Event.ACTIVITY_STOPPED,
                 -> {
-                    if (isPauseEvent(event.eventType) && pkg == foregroundPkg) {
+                    if (isEndEvent(event.eventType) && pkg == foregroundPkg) {
                         closeSession(timestamp)
                         foregroundPkg = null
                     }
+                }
+                UsageEvents.Event.SCREEN_NON_INTERACTIVE -> {
+                    closeSession(timestamp)
+                    foregroundPkg = null
                 }
             }
         }
@@ -283,11 +301,12 @@ class ScreenTimeRepository(private val context: Context) {
         }
     }
 
-    private fun isPauseEvent(type: Int): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            type == UsageEvents.Event.ACTIVITY_PAUSED
-        } else {
-            type == UsageEvents.Event.MOVE_TO_BACKGROUND
+    private fun isEndEvent(type: Int): Boolean {
+        return when {
+            type == UsageEvents.Event.ACTIVITY_STOPPED -> true
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                type == UsageEvents.Event.ACTIVITY_PAUSED
+            else -> type == UsageEvents.Event.MOVE_TO_BACKGROUND
         }
     }
 
